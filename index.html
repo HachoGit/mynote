@@ -122,6 +122,14 @@ main{flex:1;width:100%;max-width:960px;margin:0 auto;padding:0 10px 110px}
 .pn li>.fx{flex:none;color:var(--sub);font-size:13px;padding:0 8px}
 .pn .fx.rs{color:var(--blue)}
 .modal .row .danger{background:var(--red);color:#fff}
+.modal .box{max-height:90vh;overflow:auto}
+.modal a{color:var(--blue)}
+.sdot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:6px;vertical-align:middle;background:#9aa3ae}
+.sdot[hidden]{display:none}
+.warnbar{background:var(--red);color:#fff;font-weight:700;font-size:14px;border-radius:8px;padding:10px 12px;margin-bottom:8px}
+.warnbar[hidden]{display:none}
+.booting main{visibility:hidden}
+.sdot.ok{background:#3ccf7a}.sdot.busy{background:#ffd24a}.sdot.err{background:#ff6b6b}.sdot.off{background:#9aa3ae}
 .fsel{display:flex;align-items:center;gap:6px;padding:8px 12px 0;font-size:13px;color:var(--sub)}
 .fsel select{font:inherit;font-size:14px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:4px 8px;min-height:36px;max-width:100%}
 .fsel svg{width:16px;height:16px;flex:none}
@@ -147,11 +155,12 @@ main{flex:1;width:100%;max-width:960px;margin:0 auto;padding:0 10px 110px}
   <button id="bList" aria-label="ノート一覧">☰ 一覧</button>
   <h1>理論マイノート</h1>
   <button id="bNew">＋ 新規</button>
-  <button id="bBak">保存/読込</button>
+  <button id="bBak"><span class="sdot" id="sdot" hidden></span>同期・保存</button>
 </header>
 
 <main id="app">
   <div class="stick" id="stick">
+  <div class="warnbar" id="warnBar" hidden>保存に失敗しました。端末の空き容量を確認し、「同期・保存」からバックアップを取ってください。</div>
   <div class="card tcard">
   <div class="fsel"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h7l2 2h9v11H3z"/></svg><select id="fsel" aria-label="フォルダ"></select></div>
   <div class="titlebox">
@@ -198,7 +207,24 @@ main{flex:1;width:100%;max-width:960px;margin:0 auto;padding:0 10px 110px}
 </div>
 
 <div class="modal" id="modal"><div class="box">
-  <h2>保存と読み込み</h2>
+  <section id="syncBox" hidden>
+    <h2>GitHubで同期</h2>
+    <div id="syncOff">
+      <p>ノートを<b>合言葉で暗号化</b>してからGitHubの非公開メモ（Gist）に保存し、PCとスマホで自動的に同じ内容にします。GitHubに置かれるのは暗号文だけで、合言葉がなければ誰にも読めません。</p>
+      <p>各端末で1回だけ、トークンと合言葉を入れてください。<b>合言葉はすべての端末で同じもの</b>にします。忘れると同期データは誰にも読めなくなります（各端末のノートは残ります）。</p>
+      <p><a href="https://github.com/settings/tokens/new?scopes=gist&amp;description=riron-mynote" target="_blank" rel="noopener">トークンを作るページを開く</a>（「gist」だけにチェックが入った状態で開きます）</p>
+      <input id="tokIn" type="password" autocomplete="off" placeholder="ghp_ で始まるトークンを貼り付け" aria-label="GitHubトークン" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:16px">
+      <input id="passIn" type="password" autocomplete="new-password" placeholder="合言葉（8文字以上）" aria-label="合言葉" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:16px;margin-top:8px">
+      <input id="passIn2" type="password" autocomplete="new-password" placeholder="合言葉（確認のためもう一度）" aria-label="合言葉の確認" style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:16px;margin-top:8px">
+      <div class="row"><button class="p" id="bConn">接続する</button></div>
+    </div>
+    <div id="syncOn" hidden>
+      <p id="syncInfo"></p>
+      <div class="row"><button class="p" id="bSyncNow">今すぐ同期</button><button class="ghost" id="bDisc">接続を解除</button></div>
+    </div>
+    <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
+  </section>
+  <h2>保存と読み込み（手動）</h2>
   <p>全ノートをテキスト（JSON）でやり取りします。PCで作ったノートをコピーしてスマホに貼り付ければ移せます。</p>
   <textarea id="bakText" aria-label="バックアップデータ"></textarea>
   <details style="margin-top:10px"><summary style="cursor:pointer;font-size:14px;min-height:32px">貼り付け診断（赤がうまく入らないとき）</summary>
@@ -237,27 +263,35 @@ const ed=$('#ed'),toc=$('#toc'),title=$('#title');
 const esc=s=>s.replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const R=t=>`<span class="r">${t}</span>`;
 
-const sample={id:'s1',title:'001 1-1 課税の対象',updated:Date.now(),html:
-`<h2>1．事業者が国内において行う取引</h2>
-<h3>（1）${R('課税の対象（法4①）☆☆')}</h3>
-<p>${R('国内において事業者が行った資産の譲渡等（特定資産の譲渡等を除く。）及び特定仕入れ（事業として他の者から受けた特定資産の譲渡等をいう。）には、消費税を課する。')}</p>
-<h3>（2）${R('資産の譲渡等')}（法2①八）☆☆</h3>
-<p>${R('事業として対価を得て行われる資産の譲渡及び貸付け並びに役務の提供をいう。')}</p>
-<h3>（3）${R('国内取引の判定（法4③④）☆☆')}</h3>
-<p>${R('次のそれぞれの場所が国内にあるかどうかにより行うものとする。')}</p>
-<p>①${R('資産の譲渡又は貸付けの場合')}</p>
-<p>${R('譲渡又は貸付けが行われる時において資産が所在していた場所')}（その資産が船舶、特許権その他の資産である場合には、${R('一定の場所')}）</p>
-<p>②${R('役務の提供の場合（④を除く。）')}</p>
-<p>${R('役務の提供が行われた場所')}（その役務の提供が国際輸送、国際通信等で役務の提供が行われた場所が明らかでない場合には、一定の場所）</p>
-<h2>2．輸入取引</h2>
-<h3>（1）${R('課税の対象（法4②）')}</h3>
-<p>保税地域から引き取られる${R('外国貨物')}には、消費税を課する。</p>`};
+const sample={id:'s1',title:'使い方',updated:0,html:
+`<h2>1．このアプリの使い方</h2>
+<h3>（1）${R('赤マーカーを付ける')}</h3>
+<p>隠したい文字を選んで「赤」を押すと、${R('赤マーカー')}になります。もう一度押すと解除されます。</p>
+<h3>（2）${R('暗記ツール')}</h3>
+<p>上のスイッチをオンにすると、赤マーカーの部分が${R('赤く塗りつぶされて隠れます')}。タップすると開きます。</p>
+<h3>（3）${R('マイノートから取り込む')}</h3>
+<p>マイノートの画面をコピーして本文に貼り付けると、${R('赤の部分がそのまま赤マーカー')}になります。</p>`};
 
-sample.folder='f1';
-let st={notes:[sample],folders:[{id:'f1',name:'消費税法'}],cur:'s1',zoom:100,open:{f1:true}};
-try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.notes&&s.notes.length)st=s}catch(e){}
-st.folders=st.folders||[];st.open=st.open||{};
-const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}};
+sample.folder='';
+let st={notes:[sample],folders:[],cur:'s1',zoom:100,open:{}};
+let legacy=null;try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.notes&&s.notes.length)legacy=s}catch(e){}
+if(legacy)st=legacy;
+const fixSt=()=>{st.folders=st.folders||[];st.open=st.open||{};st.deleted=st.deleted||{};st.fdeleted=st.fdeleted||{}};fixSt();
+/* ===== 保存先：IndexedDB（容量の上限がほぼない）。使えない環境では localStorage ===== */
+const idb=(()=>{let p;const db=()=>p||(p=new Promise((res,rej)=>{const r=indexedDB.open('rironMyNote',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}));
+  const run=async(mode,fn)=>{const d=await db();return new Promise((res,rej)=>{const tx=d.transaction('kv',mode);const rq=fn(tx.objectStore('kv'));tx.oncomplete=()=>res(rq&&rq.result);tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error||new Error('abort'))})};
+  return{get:k=>run('readonly',s=>s.get(k)),set:(k,v)=>run('readwrite',s=>s.put(v,k)),del:k=>run('readwrite',s=>s.delete(k))};})();
+let ready=false,useLS=false,saveT2=null,onSaved=null;
+function warnSave(on){const w=document.getElementById('warnBar');if(w)w.hidden=!on}
+async function writeNow(){
+  clearTimeout(saveT2);
+  try{
+    if(useLS)localStorage.setItem(KEY,JSON.stringify(st));
+    else await idb.set('state',JSON.parse(JSON.stringify(st)));
+    warnSave(false);
+  }catch(e){warnSave(true)}
+}
+const save=()=>{if(!ready)return;clearTimeout(saveT2);saveT2=setTimeout(writeNow,250);onSaved&&onSaved()};
 const live=()=>st.notes.filter(n=>!n.trash);
 /* 名前の重複チェック（空白・全角半角・大文字小文字の違いは同じとみなす） */
 const norm=v=>(v||'').normalize('NFKC').replace(/\s+/g,'').toLowerCase();
@@ -312,6 +346,8 @@ function normalize(root=ed){
 function load(){
   const n=cur();st.cur=n.id;
   title.value=n.title;ed.innerHTML=n.html;normalize();hist=[ed.innerHTML];hi=0;
+  /* 表示用に整えた形をそのまま保存形にする（開いただけで「編集した」扱いにしない） */
+  {const canon=ed.innerHTML.replace(/ id="sec\d+"/g,'');if(canon!==n.html)n.html=canon}
   checkTitle();
   renderFsel();
   refresh();
@@ -569,12 +605,12 @@ function renderFsel(){
 }
 fsel.addEventListener('change',()=>{
   const n=cur();
-  if(fsel.value==='__new'){askName('新しいフォルダ','',name=>{const f=newFolder(name);n.folder=f.id;save();renderFsel();toast(`「${name}」に移動しました`)},()=>renderFsel(),v=>folderDup(v)?`フォルダ「${v}」はすでにあります`:'');return}
+  if(fsel.value==='__new'){askName('新しいフォルダ','',name=>{const f=newFolder(name);n.folder=f.id;n.updated=Date.now();save();renderFsel();toast(`「${name}」に移動しました`)},()=>renderFsel(),v=>folderDup(v)?`フォルダ「${v}」はすでにあります`:'');return}
   flush();
   if(titleDup(n.title,fsel.value,n.id)){toast(`「${fName(fsel.value)}」には同じ名前のノートがあるため移動できません`);fsel.value=validF(n.folder);return}
-  n.folder=fsel.value;save();checkTitle();toast(`「${fName(n.folder)}」に移動しました`);
+  n.folder=fsel.value;n.updated=Date.now();save();checkTitle();toast(`「${fName(n.folder)}」に移動しました`);
 });
-function newFolder(name){const f={id:'f'+Date.now().toString(36),name};st.folders.push(f);st.open[f.id]=true;save();return f}
+function newFolder(name){const f={id:'f'+Date.now().toString(36),name,updated:Date.now()};st.folders.push(f);st.open[f.id]=true;save();return f}
 /* 名前入力ダイアログ */
 const nameDlg=$('#nameDlg'),nameIn=$('#nameIn');let nameCb=null,nameCancel=null;
 let nameCheck=null;
@@ -605,7 +641,7 @@ const tName=n=>n.title||'無題のノート';
 function noteLi(n,showF){
   const c=(n.html.match(/class="r/g)||[]).length;
   const ctl=org?`<button class="fx del" data-d="${n.id}">削除</button>`:'';
-  return `<li class="nt ${n.id===st.cur?'cur':''}"><button data-o="${n.id}"><b>${esc(tName(n))}</b><small>${showF?`<span class="fdname">${esc(fName(validF(n.folder)))}</span>・`:''}赤 ${c} 箇所・${new Date(n.updated).toLocaleDateString('ja-JP')}</small></button>${ctl}</li>`;
+  return `<li class="nt ${n.id===st.cur?'cur':''}"><button data-o="${n.id}"><b>${esc(tName(n))}</b><small>${showF?`<span class="fdname">${esc(fName(validF(n.folder)))}</span>・`:''}赤 ${c} 箇所${n.updated?'・'+new Date(n.updated).toLocaleDateString('ja-JP'):''}</small></button>${ctl}</li>`;
 }
 function renderList(){
   $('#bOrg').classList.toggle('on',org);$('#bOrg').textContent=org?'完了':'整理';$('#orgTip').hidden=!org;
@@ -644,38 +680,207 @@ drawer.addEventListener('click',e=>{
   if(x=t('o'))return openNote(x.dataset.o);
   if(x=t('nf'))return addNote(x.dataset.nf);
   if(x=t('ft')){const id=x.dataset.ft;st.open[id]=id==='_'?st.open[id]===false:!st.open[id];save();renderList();return}
-  if(x=t('fr')){const f=st.folders.find(f=>f.id===x.dataset.fr);askName('フォルダ名を変更',f.name,name=>{f.name=name;save();renderList();renderFsel()},null,v=>folderDup(v,f.id)?`フォルダ「${v}」はすでにあります`:'');return}
+  if(x=t('fr')){const f=st.folders.find(f=>f.id===x.dataset.fr);askName('フォルダ名を変更',f.name,name=>{f.name=name;f.updated=Date.now();save();renderList();renderFsel()},null,v=>folderDup(v,f.id)?`フォルダ「${v}」はすでにあります`:'');return}
   if(x=t('fd')){
     const id=x.dataset.fd,f=st.folders.find(f=>f.id===id),cnt=live().filter(n=>n.folder===id).length;
     confirmDel(`フォルダ「${f.name}」を削除しますか？`,cnt?`中のノート ${cnt} 件は削除されず「未分類」に移ります。`:'このフォルダは空です。','フォルダを削除',()=>{
-      st.folders=st.folders.filter(f=>f.id!==id);st.notes.forEach(n=>{if(n.folder===id)n.folder=''});
+      st.folders=st.folders.filter(f=>f.id!==id);st.fdeleted[id]=Date.now();st.notes.forEach(n=>{if(n.folder===id){n.folder='';n.updated=Date.now()}});
       save();renderList();renderFsel();toast('フォルダを削除しました');
     });return;
   }
   if(x=t('d')){
     const n=st.notes.find(n=>n.id===x.dataset.d);
     confirmDel(`「${tName(n)}」を削除しますか？`,'ゴミ箱に移します。「整理」→「ゴミ箱」から戻せます。','ゴミ箱に移す',()=>{
-      flush();n.trash=Date.now();
+      flush();n.trash=Date.now();n.updated=Date.now();
       if(st.cur===n.id){const nx=live()[0];st.cur=nx?nx.id:cur().id}
       save();load();renderList();toast('ゴミ箱に移しました');
     });return;
   }
-  if(x=t('rs')){const n=st.notes.find(n=>n.id===x.dataset.rs);delete n.trash;if(n.folder&&!validF(n.folder))n.folder='';
+  if(x=t('rs')){const n=st.notes.find(n=>n.id===x.dataset.rs);delete n.trash;n.updated=Date.now();if(n.folder&&!validF(n.folder))n.folder='';
     if(titleDup(n.title,n.folder,n.id)){let i=2;while(titleDup(`${n.title}（${i}）`,n.folder,n.id))i++;n.title=`${n.title}（${i}）`;}save();renderList();toast(`「${tName(n)}」を戻しました`);return}
   if(x=t('pd')){
     const n=st.notes.find(n=>n.id===x.dataset.pd);
-    confirmDel(`「${tName(n)}」を完全に削除しますか？`,'この操作は取り消せません。','完全に削除',()=>{st.notes=st.notes.filter(m=>m!==n);save();renderList();toast('完全に削除しました')});
+    confirmDel(`「${tName(n)}」を完全に削除しますか？`,'この操作は取り消せません。','完全に削除',()=>{st.notes=st.notes.filter(m=>m!==n);st.deleted[n.id]=Date.now();save();renderList();toast('完全に削除しました')});
   }
 });
 q.addEventListener('input',renderList);
-function flush(){clearTimeout(saveT);const n=cur();ed.querySelectorAll('.open').forEach(r=>r.classList.remove('open'));n.html=ed.innerHTML.replace(/ id="sec\d+"/g,'');n.title=okTitle(n);save()}
+function flush(){
+  clearTimeout(saveT);const n=cur();
+  const h=ed.cloneNode(true);h.querySelectorAll('.open').forEach(r=>r.classList.remove('open'));
+  const html=h.innerHTML.replace(/ id="sec\d+"/g,''),t=okTitle(n);
+  if(html!==n.html||t!==n.title){n.html=html;n.title=t;n.updated=Date.now()}
+  save();
+}
 const blank=()=>({id:'n'+Date.now().toString(36),title:'',html:'',updated:Date.now(),folder:''});
 $('#bNew').onclick=()=>addNote(validF(cur().folder));
 
 
+/* ===== GitHub（Gist）同期 ===== */
+const SKEY='rironMyNote.sync',GFILE='riron-mynote.enc',OLDFILE='riron-mynote.json',GDESC='riron-mynote-sync';
+let sy={};try{sy=JSON.parse(localStorage.getItem(SKEY))||{}}catch(e){}
+const saveSy=()=>{try{localStorage.setItem(SKEY,JSON.stringify(sy))}catch(e){}};
+let canNet=false;try{canNet=window.top===window.self}catch(e){}
+let sState='off',sMsg='',syncing=false,again=false,syncT=null,muteSave=false;
+function setS(state,msg){sState=state;sMsg=msg||'';const d=$('#sdot');d.hidden=!sy.token;d.className='sdot '+state;renderSync()}
+function renderSync(){
+  $('#syncBox').hidden=!canNet;
+  $('#syncOff').hidden=!!sy.token;$('#syncOn').hidden=!sy.token;
+  if(sy.token){
+    const last=sy.last?new Date(sy.last).toLocaleString('ja-JP',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):'まだ';
+    $('#syncInfo').textContent={ok:'同期済み',busy:'同期中…',err:'エラー：'+sMsg,off:'オフライン（つながったら自動で同期します）'}[sState]+`　最終同期：${last}`;
+  }
+}
+const gh=(path,opt={})=>fetch('https://api.github.com'+path,{...opt,headers:{Authorization:'Bearer '+sy.token,Accept:'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28',...(opt.body?{'Content-Type':'application/json'}:{})},cache:'no-store'})
+  .then(async r=>{if(r.status===401)throw Object.assign(new Error('トークンが無効です'),{fatal:1});if(r.status===404)throw Object.assign(new Error('notfound'),{nf:1});if(!r.ok)throw new Error('GitHubエラー '+r.status);return r.status===204?null:r.json()});
+
+/* ===== 暗号化：合言葉から鍵を作り（PBKDF2・31万回）、AES-256-GCMで暗号化。鍵は端末の外に出せない形で保存 ===== */
+const b64=u8=>{let s='';for(let i=0;i<u8.length;i+=0x8000)s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000));return btoa(s)};
+const unb64=t=>{const bin=atob(t),u8=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u8[i]=bin.charCodeAt(i);return u8};
+let ck=null; /* {key:CryptoKey, salt:'b64'} */
+async function deriveKey(pass,saltU8){
+  const base=await crypto.subtle.importKey('raw',new TextEncoder().encode(pass),'PBKDF2',false,['deriveKey']);
+  return crypto.subtle.deriveKey({name:'PBKDF2',salt:saltU8,iterations:310000,hash:'SHA-256'},base,{name:'AES-GCM',length:256},false,['encrypt','decrypt']);
+}
+const gzip=async u8=>new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new CompressionStream('gzip'))).arrayBuffer());
+const gunzip=async u8=>new Uint8Array(await new Response(new Blob([u8]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+async function pack(obj,c=ck){
+  const iv=crypto.getRandomValues(new Uint8Array(12));
+  const plain=await gzip(new TextEncoder().encode(JSON.stringify(obj)));
+  const ct=new Uint8Array(await crypto.subtle.encrypt({name:'AES-GCM',iv},c.key,plain));
+  return `RMNE1:${c.salt}:${b64(iv)}:${b64(ct)}`;
+}
+const saltOf=t=>{const m=(t||'').trim().match(/^RMNE1:([^:]+):/);return m?m[1]:null};
+async function unpack(t,c=ck){
+  t=(t||'').trim();if(!t)return null;
+  const p=t.split(':');if(p[0]!=='RMNE1'||p.length!==4)throw new Error('同期データの形式が違います');
+  if(p[1]!==c.salt)throw Object.assign(new Error('合言葉を入れ直してください'),{badpass:1,fatal:1});
+  let plain;try{plain=await crypto.subtle.decrypt({name:'AES-GCM',iv:unb64(p[2])},c.key,unb64(p[3]))}
+  catch(e){throw Object.assign(new Error('合言葉が違います'),{badpass:1,fatal:1})}
+  return JSON.parse(new TextDecoder().decode(await gunzip(new Uint8Array(plain))));
+}
+async function gistText(g,name){const f=g.files&&g.files[name];if(!f)return null;if(f.truncated||f.content==null)return await (await fetch(f.raw_url,{cache:'no-store'})).text();return f.content}
+async function listGists(){const all=[];for(let page=1;page<=10;page++){const gs=await gh(`/gists?per_page=100&page=${page}`);all.push(...gs);if(gs.length<100)break}return all}
+async function findGist(){
+  for(let page=1;page<=10;page++){
+    const gs=await gh(`/gists?per_page=100&page=${page}`);
+    const g=gs.find(g=>g.files&&g.files[GFILE]);if(g)return g.id;
+    if(gs.length<100)break;
+  }
+  const g=await gh('/gists',{method:'POST',body:JSON.stringify({description:GDESC,public:false,files:{[GFILE]:{content:await pack(payload())}}})});
+  return g.id;
+}
+const payload=()=>({app:'riron-mynote',v:1,folders:st.folders,notes:st.notes,deleted:st.deleted,fdeleted:st.fdeleted});
+/* ノート・フォルダごとに新しい方を残す。完全削除の記録が新しければ消す */
+function mergeData(a,b){
+  const maxMap=(x,y)=>{const o={...x};for(const k in y)o[k]=Math.max(o[k]||0,y[k]);return o};
+  const deleted=maxMap(a.deleted||{},b.deleted||{}),fdeleted=maxMap(a.fdeleted||{},b.fdeleted||{});
+  const pick=(xs,ys,del)=>{const m=new Map();for(const it of[...(xs||[]),...(ys||[])]){if(!it||!it.id)continue;const c=m.get(it.id);if(!c||(it.updated||0)>(c.updated||0))m.set(it.id,it)}
+    return[...m.values()].filter(it=>!(del[it.id]>=(it.updated||0)))};
+  return{folders:pick(a.folders,b.folders,fdeleted),notes:pick(a.notes,b.notes,deleted),deleted,fdeleted};
+}
+const sig=d=>JSON.stringify([[...(d.folders||[])].sort((x,y)=>x.id<y.id?-1:1),[...(d.notes||[])].sort((x,y)=>x.id<y.id?-1:1),d.deleted||{},d.fdeleted||{}]);
+function applyMerged(m){
+  const curBefore=cur(),h=curBefore.html,t=curBefore.title;
+  Object.assign(st,{folders:m.folders,notes:m.notes,deleted:m.deleted,fdeleted:m.fdeleted});
+  if(!st.notes.some(n=>n.id===st.cur&&!n.trash))st.cur=(live()[0]||cur()).id;
+  muteSave=true;save();muteSave=false;
+  const n=cur();
+  if(n!==curBefore||n.html!==h||n.title!==t){const y=scrollY,mm=memo.checked;load();if(mm){memo.checked=true;memo.dispatchEvent(new Event('change'))}scrollTo(0,y)}
+  else{renderFsel();refresh()}
+  if(drawer.classList.contains('on'))renderList();
+}
+async function syncNow(){
+  if(!sy.token||!canNet)return;
+  await booted;
+  if(!ck){setS('err','合言葉を入れ直してください');return}
+  if(syncing){again=true;return}
+  if(!navigator.onLine){setS('off');return}
+  syncing=true;setS('busy');
+  try{
+    muteSave=true;flush();muteSave=false;
+    if(!sy.gist)sy.gist=await findGist(),saveSy();
+    let g;try{g=await gh('/gists/'+sy.gist)}catch(e){if(e.nf){sy.gist=await findGist();saveSy();g=await gh('/gists/'+sy.gist)}else throw e}
+    const remote=await unpack(await gistText(g,GFILE));
+    const local=payload(),merged=remote?mergeData(local,remote):local;
+    const curBefore=cur(),beforeHtml=curBefore.html,beforeTitle=curBefore.title;
+    if(sig(merged)!==sig(local)){
+      Object.assign(st,{folders:merged.folders,notes:merged.notes,deleted:merged.deleted,fdeleted:merged.fdeleted});
+      muteSave=true;save();muteSave=false;
+      const n=cur();
+      if(n!==curBefore||n.html!==beforeHtml||n.title!==beforeTitle){const y=scrollY,m=memo.checked;load();if(m){memo.checked=true;memo.dispatchEvent(new Event('change'))}scrollTo(0,y)}
+      else{renderFsel();refresh()}
+      if(drawer.classList.contains('on'))renderList();
+    }
+    if(!remote||sig(merged)!==sig(remote))await gh('/gists/'+sy.gist,{method:'PATCH',body:JSON.stringify({files:{[GFILE]:{content:await pack(payload())}}})});
+    sy.last=Date.now();saveSy();setS('ok');
+  }catch(e){
+    muteSave=false;
+    if(e.badpass){sy={};saveSy();ck=null;idb.del('synckey').catch(()=>{});toast('合言葉が合わないため、同期を止めました。もう一度接続してください')}
+    if(e.fatal){setS('err',e.message)}
+    else if(!navigator.onLine||e instanceof TypeError){setS('off')}
+    else setS('err',e.message);
+  }finally{syncing=false;if(again){again=false;scheduleSync(1000)}}
+}
+function scheduleSync(ms){if(!sy.token||!canNet)return;clearTimeout(syncT);syncT=setTimeout(syncNow,ms)}
+onSaved=()=>{if(!muteSave)scheduleSync(6000)};
+addEventListener('online',()=>scheduleSync(500));
+addEventListener('offline',()=>setS('off'));
+document.addEventListener('visibilitychange',()=>{if(!sy.token)return;if(document.visibilityState==='hidden'){clearTimeout(syncT);syncNow()}else scheduleSync(300)});
+$('#bConn').onclick=async()=>{
+  const t=$('#tokIn').value.trim(),pass=$('#passIn').value,pass2=$('#passIn2').value;
+  if(!t){toast('トークンを貼り付けてください');return}
+  if(pass.length<8){toast('合言葉は8文字以上にしてください');return}
+  if(pass!==pass2){toast('確認用の合言葉が一致しません');return}
+  if(!window.crypto||!crypto.subtle||!window.CompressionStream){toast('このブラウザは暗号化に対応していません');return}
+  sy={token:t};setS('busy');
+  try{
+    await gh('/user');
+    const gs=await listGists();
+    const enc=gs.find(g=>g.files&&g.files[GFILE]),old=gs.filter(g=>g.files&&g.files[OLDFILE]);
+    let c;
+    /* 以前の版の暗号化していない同期データがあれば、先にこの端末へ取り込む */
+    for(const g of old){
+      try{
+        let t=(await gistText(await gh('/gists/'+g.id),OLDFILE)||'').trim();
+        const d=t.startsWith('RMN1:')?JSON.parse(new TextDecoder().decode(await gunzip(unb64(t.slice(5))))):JSON.parse(t);
+        if(d&&Array.isArray(d.notes))applyMerged(mergeData(payload(),d));
+      }catch(e){}
+    }
+    if(enc){
+      /* ほかの端末で作った同期データがある：その合言葉で開けるか確かめる */
+      const full=await gh('/gists/'+enc.id),text=await gistText(full,GFILE),salt=saltOf(text);
+      if(!salt)throw new Error('同期データの形式が違います');
+      c={key:await deriveKey(pass,unb64(salt)),salt};
+      await unpack(text,c);
+      sy.gist=enc.id;
+      /* 手を付けていない「使い方」サンプルは持ち込まない */
+      /* （更新日時1の削除記録は、誰も編集していないサンプルだけに効く） */
+      if(st.notes.some(n=>n.id==='s1'&&!n.updated))st.deleted.s1=Math.max(st.deleted.s1||0,1);
+    }else{
+      const salt=b64(crypto.getRandomValues(new Uint8Array(16)));
+      c={key:await deriveKey(pass,unb64(salt)),salt};
+      muteSave=true;flush();muteSave=false;
+      const g=await gh('/gists',{method:'POST',body:JSON.stringify({description:GDESC,public:false,files:{[GFILE]:{content:await pack(payload(),c)}}})});
+      sy.gist=g.id;
+    }
+    ck=c;await idb.set('synckey',c);saveSy();
+    $('#tokIn').value='';$('#passIn').value='';$('#passIn2').value='';
+    toast('接続しました。同期を始めます');
+    await syncNow();
+    if(old.length)confirmDel('暗号化していない古い同期データがGitHubにあります','以前の版で保存した、暗号化されていないデータです。中身はこの端末に取り込み、暗号化して同期し直しました。削除をおすすめします。','GitHubから削除',async()=>{
+      try{for(const g of old)await gh('/gists/'+g.id,{method:'DELETE'});toast('古い同期データを削除しました')}catch(e){toast('削除できませんでした')}
+    });
+  }catch(e){
+    sy={};saveSy();setS('off');
+    toast(e.badpass?'合言葉が違います。ほかの端末で決めた合言葉を入れてください':e.fatal?'トークンが無効です。gist にチェックが入っているか確認してください':'接続できませんでした。ネット接続を確認してください');
+  }
+};
+$('#bSyncNow').onclick=()=>syncNow();
+$('#bDisc').onclick=()=>confirmDel('同期を解除しますか？','この端末のノートは残ります。GitHub上のデータも消えません。','解除する',()=>{sy={};saveSy();ck=null;idb.del('synckey').catch(()=>{});setS('off');toast('同期を解除しました')});
+
 /* 保存と読み込み */
 const modal=$('#modal'),bak=$('#bakText');
-$('#bBak').onclick=()=>{flush();bak.value=JSON.stringify({app:'riron-mynote',folders:st.folders,notes:st.notes});$('#rawText').value=lastRaw.slice(0,20000)||'（まだ貼り付けていません）';modal.classList.add('on')};
+$('#bBak').onclick=()=>{flush();renderSync();bak.value=JSON.stringify({app:'riron-mynote',folders:st.folders,notes:st.notes});$('#rawText').value=lastRaw.slice(0,20000)||'（まだ貼り付けていません）';modal.classList.add('on')};
 $('#bRaw').onclick=async()=>{const t=$('#rawText');try{await navigator.clipboard.writeText(t.value);toast('コピーしました')}catch(e){t.select();toast('選択しました。長押しでコピーしてください')}};
 modal.addEventListener('click',e=>{if(e.target===modal||e.target.dataset.mclose!==undefined)modal.classList.remove('on')});
 $('#bCopy').onclick=async()=>{try{await navigator.clipboard.writeText(bak.value);toast('コピーしました')}catch(e){bak.select();toast('選択しました。長押しでコピーしてください')}};
@@ -704,9 +909,25 @@ $('#bSaveFile').onclick=()=>{
 $('#bLoad').onclick=()=>importText(bak.value);
 $('#file').onchange=e=>{const f=e.target.files[0];if(!f)return;f.text().then(importText);e.target.value=''};
 
-addEventListener('pagehide',flush);
+addEventListener('pagehide',()=>{flush();writeNow()});
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden'&&ready){flush();writeNow()}});
 try{document.execCommand('defaultParagraphSeparator',false,'p')}catch(e){}
 setZoom(st.zoom||100);load();
+document.documentElement.classList.add('booting');setTimeout(()=>document.documentElement.classList.remove('booting'),2500);
+const booted=(async()=>{
+  try{
+    const s=await idb.get('state');
+    if(s&&Array.isArray(s.notes)&&s.notes.length){st=s}
+    else if(legacy){await idb.set('state',JSON.parse(JSON.stringify(st)))} /* 古い保存場所から移す */
+    if(legacy){const back=await idb.get('state');if(back&&back.notes&&back.notes.length)try{localStorage.removeItem(KEY)}catch(e){}}
+  }catch(e){useLS=true}
+  fixSt();ready=true;
+  try{navigator.storage&&navigator.storage.persist&&navigator.storage.persist()}catch(e){}
+  setZoom(st.zoom||100);load();
+  document.documentElement.classList.remove('booting');
+})();
+if(!canNet)$('#bBak').lastChild.textContent='保存/読込';
+booted.then(async()=>{try{ck=await idb.get('synckey')||null}catch(e){ck=null}if(sy.token&&canNet){if(!ck){sy={};saveSy();setS('off');return}setS(navigator.onLine?'busy':'off');scheduleSync(300)}});
 const hdr=document.querySelector('header');const hro=new ResizeObserver(()=>document.documentElement.style.setProperty('--hh',hdr.offsetHeight+'px'));hro.observe(hdr);
 const stk=document.querySelector('#stick');const sro=new ResizeObserver(()=>document.documentElement.style.setProperty('--sh',stk.offsetHeight+'px'));sro.observe(stk);
 }

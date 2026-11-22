@@ -1,5 +1,5 @@
 // 理論マイノート：オフライン用。アプリを更新したら VERSION の数字を上げる
-const VERSION = 'v1';
+const VERSION = 'v7';
 const CACHE = 'riron-mynote-' + VERSION;
 const FILES = ['./', './index.html', './manifest.webmanifest', './icon-192.png', './icon-512.png', './icon-maskable-512.png', './apple-touch-icon.png'];
 
