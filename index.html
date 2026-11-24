@@ -24,7 +24,7 @@
 --accent:#f0661c;--blue:light-dark(#1f6fc2,#7ab4f0);--fs:14.4px}
 :root[data-theme=light]{color-scheme:light}:root[data-theme=dark]{color-scheme:dark}
 *{box-sizing:border-box;min-width:0}
-html{height:100%}body{min-height:100%}
+html{height:100%;overscroll-behavior-x:none}body{min-height:100%;overscroll-behavior-x:none}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.6 "Noto Sans JP",system-ui,sans-serif;overflow-x:clip;display:flex;flex-direction:column}
 button,input,textarea{font:inherit;color:inherit}
 button{cursor:pointer;border:0;background:none;min-height:44px;padding:0 12px;border-radius:8px}
@@ -90,10 +90,14 @@ main{flex:1;width:100%;max-width:960px;margin:0 auto;padding:0 10px 110px}
 .zoom{justify-self:center;display:flex;align-items:center;border:1px solid var(--line);border-radius:22px}
 .zoom button{min-width:40px;padding:0;font-size:18px}
 .zoom span{font-size:13px;width:44px;text-align:center}
-.drawer{position:fixed;inset:0;z-index:10;display:none}
-.drawer.on{display:block}
-.drawer .bk{position:absolute;inset:0;background:#0007}
-.drawer .pn{position:absolute;top:0;bottom:0;left:0;width:min(360px,88vw);background:var(--paper);display:flex;flex-direction:column}
+.drawer{position:fixed;inset:0;z-index:10;visibility:hidden;pointer-events:none;transition:visibility 0s .22s}
+.drawer.on{visibility:visible;pointer-events:auto;transition:visibility 0s}
+.drawer .bk{position:absolute;inset:0;background:#0007;opacity:0;transition:opacity .22s}
+.drawer.on .bk{opacity:1}
+.drawer .pn{position:absolute;top:0;bottom:0;left:0;width:min(360px,88vw);background:var(--paper);display:flex;flex-direction:column;transform:translateX(-102%);transition:transform .22s ease-out;will-change:transform}
+.drawer.on .pn{transform:none}
+.drawer .pn,.drawer .pn *,.drawer .bk{touch-action:pan-y}
+.drawer.drag .pn,.drawer.drag .bk{transition:none}
 .pn h2{font-size:16px;margin:0;padding:14px 16px;background:var(--bar);color:#fff}
 .pn input{margin:10px 12px;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);font-size:16px}
 .pn ul{list-style:none;margin:0;padding:0;overflow:auto;flex:1}
@@ -669,12 +673,60 @@ function renderList(){
   list.innerHTML=html;
 }
 $('#bOrg').onclick=()=>{org=!org;renderList()};
-$('#bList').onclick=()=>{flush();org=false;q.value='';const f=validF(cur().folder);st.open[f||'_']=true;renderList();drawer.classList.add('on')};
+function openDrawer(){
+  if(drawer.classList.contains('on'))return;
+  flush();org=false;q.value='';const f=validF(cur().folder);st.open[f||'_']=true;renderList();drawer.classList.add('on');
+  /* Androidの「戻る」で一覧だけを閉じられるようにする */
+  try{if(!(history.state&&history.state.drawer))history.pushState({drawer:1},'')}catch(e){}
+}
+function closeDrawer(fromBack){
+  if(!drawer.classList.contains('on'))return;
+  drawer.classList.remove('on');
+  if(!fromBack){try{if(history.state&&history.state.drawer)history.back()}catch(e){}}
+}
+addEventListener('popstate',()=>closeDrawer(true));
+$('#bList').onclick=openDrawer;
+/* スワイプ：本文で右へ → 一覧を開く／一覧で左へ → 閉じる */
+{
+  let sx=0,sy0=0,t0=0,mode=null,dx=0;
+  const pn=drawer.querySelector('.pn'),bk=drawer.querySelector('.bk');
+  const blocked=t=>t.closest('input,textarea,select,.modal,.dock,.tools,button')||document.querySelector('.modal.on');
+  const hasSel=()=>{const s=getSelection();return s&&s.rangeCount&&!s.isCollapsed};
+  document.addEventListener('touchstart',e=>{
+    if(e.touches.length!==1){mode=null;return}
+    const p=e.touches[0];sx=p.clientX;sy0=p.clientY;t0=Date.now();dx=0;
+    if(drawer.classList.contains('on'))mode=e.target.closest('.pn')||e.target.closest('.bk')?'close':null;
+    else mode=(sx>24&&!blocked(e.target)&&!hasSel())?'open':null; /* 画面の端はAndroidの「戻る」操作に任せる */
+  },{passive:true});
+  document.addEventListener('touchmove',e=>{
+    if(!mode||e.touches.length!==1)return;
+    const p=e.touches[0],mx=p.clientX-sx,my=p.clientY-sy0;
+    if(mode==='open'||mode==='close'){
+      if(Math.abs(my)>Math.abs(mx)&&Math.abs(my)>10){mode=null;drawer.classList.remove('drag');pn.style.transform='';bk.style.opacity='';if(!drawer.classList.contains('on'))drawer.style.visibility='';return}
+      if(Math.abs(mx)<12)return;
+      if(mode==='open'&&mx<0){return}
+      if(mode==='open'&&hasSel()){mode=null;return}
+    }
+    dx=mx;const w=pn.offsetWidth;
+    drawer.classList.add('drag');
+    if(mode==='open'){drawer.style.visibility='visible';const x=Math.min(0,-w+dx);pn.style.transform=`translateX(${x}px)`;bk.style.opacity=String(Math.min(1,dx/w))}
+    else{const x=Math.min(0,dx);pn.style.transform=`translateX(${x}px)`;bk.style.opacity=String(Math.max(0,1+x/w))}
+  },{passive:true});
+  document.addEventListener('touchend',()=>{
+    if(!mode)return;
+    const w=pn.offsetWidth,fast=Date.now()-t0<300,m=mode;mode=null;
+    if(!drawer.classList.contains('drag'))return;
+    drawer.classList.remove('drag');pn.style.transform='';bk.style.opacity='';drawer.style.visibility='';
+    if(m==='open'&&(dx>w*0.35||(fast&&dx>50)))openDrawer();
+    if(m==='close'&&(dx<-w*0.3||(fast&&dx<-50)))closeDrawer();
+  });
+  document.addEventListener('touchcancel',()=>{mode=null;drawer.classList.remove('drag');pn.style.transform='';bk.style.opacity='';drawer.style.visibility=''});
+}
 $('#bNewF').onclick=()=>askName('新しいフォルダ','',name=>{newFolder(name);renderList();renderFsel();toast(`フォルダ「${name}」を作りました`)},null,v=>folderDup(v)?`フォルダ「${v}」はすでにあります`:'');
-function openNote(id){flush();st.cur=id;save();memo.checked=false;memo.dispatchEvent(new Event('change'));load();drawer.classList.remove('on');scrollTo(0,0)}
-function addNote(folder){flush();const n=blank();n.folder=folder;st.notes.push(n);st.cur=n.id;save();memo.checked=false;memo.dispatchEvent(new Event('change'));load();drawer.classList.remove('on');title.focus()}
+function openNote(id){flush();st.cur=id;save();memo.checked=false;memo.dispatchEvent(new Event('change'));load();closeDrawer();scrollTo(0,0)}
+function addNote(folder){flush();const n=blank();n.folder=folder;st.notes.push(n);st.cur=n.id;save();memo.checked=false;memo.dispatchEvent(new Event('change'));load();closeDrawer();title.focus()}
 drawer.addEventListener('click',e=>{
-  if(e.target.dataset.close!==undefined){drawer.classList.remove('on');return}
+  if(e.target.dataset.close!==undefined){closeDrawer();return}
   const t=k=>e.target.closest(`[data-${k}]`);
   let x;
   if(x=t('o'))return openNote(x.dataset.o);
