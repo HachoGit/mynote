@@ -423,7 +423,11 @@ ed.addEventListener('keydown',e=>{
 
 $('#bNext').onclick=()=>{
   if(!memo.checked)return;
-  const u=ed.querySelector('.r:not(.open)');
+  /* 全部隠れていれば一番上から。開いているものがあれば、開いている中で一番上のものに続く（その下の）最初の隠れたものを開く */
+  const rs=[...ed.querySelectorAll('.r')];
+  const top=rs.findIndex(r=>r.classList.contains('open'));
+  let u=top<0?rs[0]:rs.slice(top+1).find(r=>!r.classList.contains('open'));
+  if(!u)u=rs.find(r=>!r.classList.contains('open')); /* その下が全部開いていたら、上に残った隠れたものへ */
   if(!u){toast('すべて表示しました');return}
   u.classList.add('open');u.scrollIntoView({block:'center',behavior:'smooth'});
 };

@@ -154,6 +154,19 @@ def main():
         pg.click("#bNext"); pg.wait_for_timeout(200); n1 = pg.evaluate("()=>document.querySelectorAll('#ed .r.open').length")
         pg.click("#bPrev"); pg.wait_for_timeout(200); n2 = pg.evaluate("()=>document.querySelectorAll('#ed .r.open').length")
         check("次を開く／戻す", n1 == 2 and n2 == 1, f"{n1},{n2}")
+        # 次を開く・戻すの規則（赤4つ：0=隠れている,1=開いている）
+        def set_open(bits):
+            pg.evaluate("b=>[...document.querySelectorAll('#ed .r')].forEach((r,i)=>r.classList.toggle('open',b[i]==='1'))", bits)
+        state = lambda: pg.evaluate("()=>[...document.querySelectorAll('#ed .r')].map(r=>r.classList.contains('open')?1:0).join('')")
+        for bits, btn, want, name in [
+            ("0000", "#bNext", "1000", "全部隠れていれば一番上から開く"),
+            ("0101", "#bNext", "0111", "開いている中で一番上のものに続けて開く"),
+            ("0110", "#bNext", "0111", "開いている中で一番上のものに続けて開く（間が開いている）"),
+            ("0011", "#bNext", "1011", "その下が全部開いていれば上に残ったものを開く"),
+            ("1111", "#bPrev", "1110", "全部開いていれば一番下から戻す"),
+            ("0101", "#bPrev", "0100", "開いている中で一番下から戻す"),
+        ]:
+            set_open(bits); pg.click(btn); pg.wait_for_timeout(150); check(f"{name}（{bits}→{want}）", state() == want, state())
 
         # ---- スワイプで一覧 ----
         ctx, pg = dev(touch=True)
