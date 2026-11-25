@@ -428,13 +428,11 @@ ed.addEventListener('keydown',e=>{
 
 $('#bNext').onclick=()=>{
   if(!memo.checked)return;
-  /* 今の位置より下にある最初の隠れたものを開く。下が全部開いていれば上に残ったものへ */
+  /* 今の位置より下にある最初の隠れたものを開く。下に残っていなければ止まる（上には戻らない） */
   const rs=reds();
-  let u=rs.slice(pos+1).find(r=>!isOpenR(r)),wrapped=false;
-  if(!u){u=rs.find(r=>!isOpenR(r));wrapped=!!u}
-  if(!u){toast('すべて表示しました');return}
+  const u=rs.slice(pos+1).find(r=>!isOpenR(r));
+  if(!u){toast(rs.some(r=>!isOpenR(r))?'最後まで来ました':'すべて表示しました');return}
   u.classList.add('open');pos=rs.indexOf(u);
-  if(wrapped)toast('最後まで来たので上に戻ります');
   u.scrollIntoView({block:'center',behavior:'smooth'});stat();
 };
 

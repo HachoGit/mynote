@@ -169,10 +169,12 @@ def main():
         for name, seq, want in [
             ("最初は一番上から開き、戻すで逆順に隠す", "NNPPN", ["1000", "1100", "1000", "0000", "1000"]),
             ("途中から始めて全部戻したら、その位置から再開", "2NPPN", ["0010", "0011", "0010", "0000", "0010"]),
-            ("戻すは直前に開いたものを隠す（下まで行けば上へ）", "0N3NP", ["1000", "1100", "1101", "1111", "1101"]),
+            ("戻すは直前に開いたものを隠す", "0N3P", ["1000", "1100", "1101", "1100"]),
+            ("最後まで来たら次を開くは止まる（上には戻らない）", "2NNN", ["0010", "0011", "0011", "0011"]),
             ("今の位置をタップで閉じたら次はそこから", "NN1N", ["1000", "1100", "1000", "1100"]),
         ]:
             reset(); got = do(seq); check(name, got == want, " ".join(got))
+        check("最後まで来たら案内を出す", "最後まで来ました" in pg.inner_text("#toast"))
         reset(); pg.click("#bPrev"); check("全部隠れているときの戻すは何もしない", state() == "0000" and "すべて隠れています" in pg.inner_text("#toast"))
         upd = lambda: pg.evaluate("""async()=>{await new Promise(r=>setTimeout(r,600));const d=await new Promise(r=>{const q=indexedDB.open('rironMyNote',1);q.onsuccess=()=>r(q.result)});
           return await new Promise(r=>{const g=d.transaction('kv').objectStore('kv').get('state');g.onsuccess=()=>r(JSON.stringify(g.result.notes.map(n=>n.updated)))})}""")
