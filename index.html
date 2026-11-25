@@ -349,6 +349,7 @@ function normalize(root=ed){
 
 function load(){
   const n=cur();st.cur=n.id;
+  pos=-1;
   title.value=n.title;ed.innerHTML=n.html;normalize();hist=[ed.innerHTML];hi=0;
   /* 表示用に整えた形をそのまま保存形にする（開いただけで「編集した」扱いにしない） */
   {const canon=ed.innerHTML.replace(/ id="sec\d+"/g,'');if(canon!==n.html)n.html=canon}
@@ -371,12 +372,8 @@ function refresh(){buildToc();stat()}
 let saveT;
 function persist(){
   clearTimeout(saveT);
-  saveT=setTimeout(()=>{
-    const n=cur();
-    ed.querySelectorAll('.open').forEach(r=>r.classList.remove('open'));
-    n.html=ed.innerHTML.replace(/ id="sec\d+"/g,'');n.title=okTitle(n);n.updated=Date.now();
-    save();
-  },400);
+  /* 画面の開閉状態には触れず、内容が変わったときだけ更新日時を進める（flush と同じ処理） */
+  saveT=setTimeout(flush,400);
 }
 let snapT;
 ed.addEventListener('input',()=>{liveFix();refresh();persist();clearTimeout(snapT);snapT=setTimeout(snap,500)});
@@ -398,6 +395,7 @@ title.addEventListener('blur',()=>{if(checkTitle()){toast(`このフォルダに
 /* 暗記ツール */
 const memo=$('#memo');
 memo.addEventListener('change',()=>{
+  pos=-1;
   if(memo.checked){normalize();snap()}
   document.body.classList.toggle('memo',memo.checked);
   $('#bNext').disabled=$('#bPrev').disabled=!memo.checked;
@@ -411,9 +409,16 @@ memo.addEventListener('change',()=>{
 const units=()=>[...ed.querySelectorAll('.r')];
 const isOpen=u=>u.classList.contains('open');
 function openUnit(u){u.classList.add('open')}
+/* 「今の位置」：次を開く・戻す・タップで共有する。-1 は一番上の手前 */
+let pos=-1;
+const reds=()=>[...ed.querySelectorAll('.r')];
+const isOpenR=r=>r.classList.contains('open');
 function tap(target){
   const r=target.closest('.r');if(!r)return;
+  const i=reds().indexOf(r);
   r.classList.toggle('open');
+  if(isOpenR(r))pos=i;          /* タップで開いた所が今の位置（途中から始められる） */
+  else if(i===pos)pos=i-1;      /* 今の位置を閉じたら、次はそこから */
   stat();
 }
 ed.addEventListener('click',e=>{if(memo.checked)tap(e.target)});
@@ -423,21 +428,26 @@ ed.addEventListener('keydown',e=>{
 
 $('#bNext').onclick=()=>{
   if(!memo.checked)return;
-  /* 全部隠れていれば一番上から。開いているものがあれば、開いている中で一番上のものに続く（その下の）最初の隠れたものを開く */
-  const rs=[...ed.querySelectorAll('.r')];
-  const top=rs.findIndex(r=>r.classList.contains('open'));
-  let u=top<0?rs[0]:rs.slice(top+1).find(r=>!r.classList.contains('open'));
-  if(!u)u=rs.find(r=>!r.classList.contains('open')); /* その下が全部開いていたら、上に残った隠れたものへ */
+  /* 今の位置より下にある最初の隠れたものを開く。下が全部開いていれば上に残ったものへ */
+  const rs=reds();
+  let u=rs.slice(pos+1).find(r=>!isOpenR(r)),wrapped=false;
+  if(!u){u=rs.find(r=>!isOpenR(r));wrapped=!!u}
   if(!u){toast('すべて表示しました');return}
-  u.classList.add('open');u.scrollIntoView({block:'center',behavior:'smooth'});
+  u.classList.add('open');pos=rs.indexOf(u);
+  if(wrapped)toast('最後まで来たので上に戻ります');
+  u.scrollIntoView({block:'center',behavior:'smooth'});stat();
 };
 
 $('#bPrev').onclick=()=>{
   if(!memo.checked)return;
-  const os=ed.querySelectorAll('.r.open');
-  if(!os.length){toast('すべて隠れています');return}
-  const u=os[os.length-1];
-  u.classList.remove('open');u.scrollIntoView({block:'center',behavior:'smooth'});
+  /* 今の位置のものを隠し、位置を1つ手前に戻す。今の位置が隠れていれば、その上で一番近い開いたもの */
+  const rs=reds();
+  let k=-1;
+  for(let x=Math.min(pos,rs.length-1);x>=0;x--)if(isOpenR(rs[x])){k=x;break}
+  if(k<0)for(let x=rs.length-1;x>=0;x--)if(isOpenR(rs[x])){k=x;break}
+  if(k<0){toast('すべて隠れています');return}
+  rs[k].classList.remove('open');pos=k-1;
+  rs[k].scrollIntoView({block:'center',behavior:'smooth'});stat();
 };
 
 /* 目次 */

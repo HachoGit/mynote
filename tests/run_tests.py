@@ -154,20 +154,31 @@ def main():
         pg.click("#bNext"); pg.wait_for_timeout(200); n1 = pg.evaluate("()=>document.querySelectorAll('#ed .r.open').length")
         pg.click("#bPrev"); pg.wait_for_timeout(200); n2 = pg.evaluate("()=>document.querySelectorAll('#ed .r.open').length")
         check("次を開く／戻す", n1 == 2 and n2 == 1, f"{n1},{n2}")
-        # 次を開く・戻すの規則（赤4つ：0=隠れている,1=開いている）
-        def set_open(bits):
-            pg.evaluate("b=>[...document.querySelectorAll('#ed .r')].forEach((r,i)=>r.classList.toggle('open',b[i]==='1'))", bits)
+        # 「今の位置」に沿った 次を開く・戻す・タップ（赤4つ：0=隠れている,1=開いている）
         state = lambda: pg.evaluate("()=>[...document.querySelectorAll('#ed .r')].map(r=>r.classList.contains('open')?1:0).join('')")
-        for bits, btn, want, name in [
-            ("0000", "#bNext", "1000", "全部隠れていれば一番上から開く"),
-            ("0101", "#bNext", "0111", "開いている中で一番上のものに続けて開く"),
-            ("0110", "#bNext", "0111", "開いている中で一番上のものに続けて開く（間が開いている）"),
-            ("0011", "#bNext", "1011", "その下が全部開いていれば上に残ったものを開く"),
-            ("1111", "#bPrev", "1110", "全部開いていれば一番下から戻す"),
-            ("0101", "#bPrev", "0100", "開いている中で一番下から戻す"),
+        def reset():
+            pg.click(".sw"); pg.wait_for_timeout(100); pg.click(".sw"); pg.wait_for_timeout(150)
+        def do(seq):
+            out = []
+            for a in seq:
+                if a == "N": pg.click("#bNext")
+                elif a == "P": pg.click("#bPrev")
+                else: pg.click(f"#ed .r >> nth={int(a)}")
+                pg.wait_for_timeout(120); out.append(state())
+            return out
+        for name, seq, want in [
+            ("最初は一番上から開き、戻すで逆順に隠す", "NNPPN", ["1000", "1100", "1000", "0000", "1000"]),
+            ("途中から始めて全部戻したら、その位置から再開", "2NPPN", ["0010", "0011", "0010", "0000", "0010"]),
+            ("戻すは直前に開いたものを隠す（下まで行けば上へ）", "0N3NP", ["1000", "1100", "1101", "1111", "1101"]),
+            ("今の位置をタップで閉じたら次はそこから", "NN1N", ["1000", "1100", "1000", "1100"]),
         ]:
-            set_open(bits); pg.click(btn); pg.wait_for_timeout(150); check(f"{name}（{bits}→{want}）", state() == want, state())
-
+            reset(); got = do(seq); check(name, got == want, " ".join(got))
+        reset(); pg.click("#bPrev"); check("全部隠れているときの戻すは何もしない", state() == "0000" and "すべて隠れています" in pg.inner_text("#toast"))
+        upd = lambda: pg.evaluate("""async()=>{await new Promise(r=>setTimeout(r,600));const d=await new Promise(r=>{const q=indexedDB.open('rironMyNote',1);q.onsuccess=()=>r(q.result)});
+          return await new Promise(r=>{const g=d.transaction('kv').objectStore('kv').get('state');g.onsuccess=()=>r(JSON.stringify(g.result.notes.map(n=>n.updated)))})}""")
+        before = upd(); reset(); pg.click("#bNext"); pg.wait_for_timeout(700)
+        check("暗記ツールをすぐ入れ直して開いても、遅れた保存で閉じない", state().startswith("1"), state())
+        check("編集せずに暗記ツールを切り替えても更新日時は変わらない", upd() == before)
         # ---- スワイプで一覧 ----
         ctx, pg = dev(touch=True)
         cdp = ctx.new_cdp_session(pg)
