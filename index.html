@@ -52,6 +52,26 @@ main{flex:1;width:100%;max-width:960px;margin:0 auto;padding:0 10px 110px}
 .sw input:checked+i{background:var(--red)}.sw input:checked+i::after{transform:translateX(20px)}
 .sw input:focus-visible+i{outline:2px solid var(--blue);outline-offset:2px}
 .opts .sp{flex:1}
+.sw input{order:2}.sw i{order:3}
+.done{border:1.5px solid #30a14e;color:#216e39;background:var(--paper);font-weight:700;font-size:14px;padding:0 14px;transition:background .2s,color .2s}
+.done.flash{background:#30a14e;color:#fff}
+.marks{display:flex;flex-wrap:wrap;align-items:center;gap:3px;padding:6px 4px 0;cursor:pointer;min-height:20px}
+.marks .row10{display:flex;gap:3px;margin-right:6px}
+.sq{display:inline-block;width:11px;height:11px;border-radius:2px;background:light-dark(#d5dae1,#2d333b)}
+.pn .sq{background:light-dark(#e4e8ed,#2d333b)}
+.sq.on{background:#30a14e}
+.marks small{font-size:12px;color:var(--sub);margin-left:2px}
+.pn .sqs{display:flex;gap:2px;margin-top:3px;align-items:center}
+.pn .sqs .sq{width:8px;height:8px}
+.pn .sqs em{font-style:normal;font-size:11px;color:var(--sub);margin-left:4px}
+.reclist{list-style:none;margin:8px 0 0;padding:0;max-height:50vh;overflow:auto}
+.reclist li{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--line);padding:2px 0 2px 4px;font-size:15px}
+.reclist .del{color:var(--red);font-size:14px}
+.reclist .empty{color:var(--sub);padding:10px 4px}
+.atoast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#22262c;color:#fff;border-radius:12px;padding:4px 4px 4px 14px;display:flex;align-items:center;gap:10px;font-size:14px;z-index:9;max-width:calc(100vw - 24px)}
+.atoast span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.atoast[hidden]{display:none}
+.atoast button{color:#9be9a8;font-weight:700;white-space:nowrap}
 .ghost{border:1px solid var(--line);background:var(--paper);font-size:14px}
 .tools{display:flex;gap:4px;flex-wrap:wrap;padding:6px;border-bottom:1px solid var(--line);position:sticky;top:calc(var(--hh,44px) + var(--sh,120px));background:var(--paper);z-index:3;border-radius:10px 10px 0 0}
 .tools button{font-size:14px;border:1px solid var(--line);min-width:44px}
@@ -172,9 +192,11 @@ main{flex:1;width:100%;max-width:960px;margin:0 auto;padding:0 10px 110px}
     <small id="tlen">0/40</small>
   </div>
   </div>
+  <div class="marks" id="marks" role="button" tabindex="0" aria-label="暗記の記録を見る"></div>
   <div class="opts">
-    <label class="sw"><input type="checkbox" id="memo"><i></i>暗記ツール</label>
+    <button class="done" id="bDone">✓ 暗記した</button>
     <span class="sp"></span>
+    <label class="sw">暗記ツール<input type="checkbox" id="memo"><i></i></label>
   </div>
   </div>
   <div class="card">
@@ -257,6 +279,13 @@ main{flex:1;width:100%;max-width:960px;margin:0 auto;padding:0 10px 110px}
   <div class="row"><button class="danger" id="cfOk">削除する</button><button class="ghost" id="cfNo">キャンセル</button></div>
 </div></div>
 
+<div class="modal" id="recDlg"><div class="box">
+  <h2 id="recTtl">暗記の記録</h2>
+  <ul class="reclist" id="recList"></ul>
+  <div class="row" style="justify-content:flex-end"><button class="ghost" id="recClose">閉じる</button></div>
+</div></div>
+
+<div class="atoast" id="atoast" hidden><span id="atMsg"></span><button id="atBtn"></button></div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -280,7 +309,7 @@ sample.folder='';
 let st={notes:[sample],folders:[],cur:'s1',zoom:100,open:{}};
 let legacy=null;try{const s=JSON.parse(localStorage.getItem(KEY));if(s&&s.notes&&s.notes.length)legacy=s}catch(e){}
 if(legacy)st=legacy;
-const fixSt=()=>{st.folders=st.folders||[];st.open=st.open||{};st.deleted=st.deleted||{};st.fdeleted=st.fdeleted||{}};fixSt();
+const fixSt=()=>{st.folders=st.folders||[];st.open=st.open||{};st.deleted=st.deleted||{};st.fdeleted=st.fdeleted||{};st.recs=st.recs||{};st.recdel=st.recdel||{}};fixSt();
 /* ===== 保存先：IndexedDB（容量の上限がほぼない）。使えない環境では localStorage ===== */
 const idb=(()=>{let p;const db=()=>p||(p=new Promise((res,rej)=>{const r=indexedDB.open('rironMyNote',1);r.onupgradeneeded=()=>r.result.createObjectStore('kv');r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}));
   const run=async(mode,fn)=>{const d=await db();return new Promise((res,rej)=>{const tx=d.transaction('kv',mode);const rq=fn(tx.objectStore('kv'));tx.oncomplete=()=>res(rq&&rq.result);tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error||new Error('abort'))})};
@@ -304,7 +333,7 @@ const titleDup=(t,folder,except)=>!!norm(t)&&live().some(n=>n.id!==except&&(n.fo
 const cur=()=>live().find(n=>n.id===st.cur)||live()[0]||(()=>{const n={id:'n'+Date.now().toString(36),title:'',html:'',updated:Date.now(),folder:''};st.notes.push(n);return n})();
 
 let toastT;
-const toast=m=>{const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),1800)};
+const toast=m=>{const at=document.getElementById('atoast');if(at)at.hidden=true;const t=$('#toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),1800)};
 
 /* 履歴（元に戻す） */
 let hist=[],hi=-1;
@@ -354,6 +383,7 @@ function load(){
   /* 表示用に整えた形をそのまま保存形にする（開いただけで「編集した」扱いにしない） */
   {const canon=ed.innerHTML.replace(/ id="sec\d+"/g,'');if(canon!==n.html)n.html=canon}
   checkTitle();
+  renderMarks();
   renderFsel();
   refresh();
 }
@@ -431,7 +461,7 @@ $('#bNext').onclick=()=>{
   /* 今の位置より下にある最初の隠れたものを開く。下に残っていなければ止まる（上には戻らない） */
   const rs=reds();
   const u=rs.slice(pos+1).find(r=>!isOpenR(r));
-  if(!u){toast(rs.some(r=>!isOpenR(r))?'最後まで来ました':'すべて表示しました');return}
+  if(!u){const msg=rs.some(r=>!isOpenR(r))?'最後まで来ました':'すべて表示しました';actionToast(msg,'✓ 暗記した',()=>recordDone(),8000);return}
   u.classList.add('open');pos=rs.indexOf(u);
   u.scrollIntoView({block:'center',behavior:'smooth'});stat();
 };
@@ -447,6 +477,60 @@ $('#bPrev').onclick=()=>{
   rs[k].classList.remove('open');pos=k-1;
   rs[k].scrollIntoView({block:'center',behavior:'smooth'});stat();
 };
+
+/* ===== 暗記の記録 ===== */
+/* st.recs = {記録id: {n: ノートid, t: 時刻}}、st.recdel = {記録id: 取り消した時刻}（同期で取り消しを伝える） */
+const recsOf=id=>Object.entries(st.recs||{}).filter(([k,r])=>r.n===id).map(([k,r])=>({k,t:r.t})).sort((a,b)=>a.t-b.t);
+const fmtRec=t=>{const d=new Date(t),p=n=>String(n).padStart(2,'0');return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${p(d.getHours())}:${p(d.getMinutes())}`};
+function squaresHTML(cnt){
+  const rows=Math.max(1,Math.ceil(cnt/10));let h='';
+  for(let r=0;r<rows;r++){h+='<span class="row10">';for(let i=0;i<10;i++)h+=`<span class="sq${r*10+i<cnt?' on':''}"></span>`;h+='</span>'}
+  return h;
+}
+function renderMarks(){
+  const rs=recsOf(cur().id),c=rs.length;
+  $('#marks').innerHTML=squaresHTML(c)+`<small>${c}回${c?'・最終 '+new Date(rs[c-1].t).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'}):''}</small>`;
+}
+function listSquares(id){
+  const c=recsOf(id).length;let h='';
+  for(let i=0;i<10;i++)h+=`<span class="sq${i<c?' on':''}"></span>`;
+  return `<span class="sqs">${h}<em>${c}回</em></span>`;
+}
+let atT=null;
+function actionToast(msg,label,fn,ms=5000){
+  const a=$('#atoast');$('#atMsg').textContent=msg;const b=$('#atBtn');b.textContent=label;
+  b.onclick=()=>{a.hidden=true;clearTimeout(atT);fn()};
+  $('#toast').classList.remove('on');a.hidden=false;clearTimeout(atT);atT=setTimeout(()=>{a.hidden=true},ms);
+}
+function addRec(){
+  const n=cur(),k='r'+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+  st.recs[k]={n:n.id,t:Date.now()};save();renderMarks();
+  const b=$('#bDone');b.classList.add('flash');b.textContent='✓ 記録しました';setTimeout(()=>{b.classList.remove('flash');b.textContent='✓ 暗記した'},1200);
+  actionToast(`${recsOf(n.id).length}回目を記録しました`,'取り消す',()=>{removeRec(k);toast('取り消しました')});
+}
+function removeRec(k){if(!st.recs[k])return;delete st.recs[k];st.recdel[k]=Date.now();save();renderMarks();if(drawer.classList.contains('on'))renderList()}
+function recordDone(){
+  const rs=recsOf(cur().id),last=rs[rs.length-1];
+  if(last&&Date.now()-last.t<60000){
+    confirmDel('さっき記録しました','1分以内にもう一度押されました。もう1回記録しますか？','もう1回記録する',()=>{addRec()});
+    return;
+  }
+  addRec();
+}
+$('#bDone').onclick=()=>recordDone();
+/* マスをタップ：記録の一覧（あとから取り消せる） */
+const recDlg=$('#recDlg');
+function renderRecDlg(){
+  const rs=recsOf(cur().id).reverse();
+  $('#recTtl').textContent=`暗記の記録（${rs.length}回）`;
+  $('#recList').innerHTML=rs.length?rs.map(r=>`<li><span>${fmtRec(r.t)}</span><button class="del" data-rk="${r.k}">削除</button></li>`).join(''):'<li class="empty">まだ記録がありません。「✓ 暗記した」で記録できます。</li>';
+}
+const openRec=()=>{renderRecDlg();recDlg.classList.add('on')};
+$('#marks').onclick=openRec;
+$('#marks').onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openRec()}};
+$('#recList').onclick=e=>{const b=e.target.closest('[data-rk]');if(!b)return;removeRec(b.dataset.rk);renderRecDlg();toast('記録を削除しました')};
+$('#recClose').onclick=()=>recDlg.classList.remove('on');
+recDlg.addEventListener('click',e=>{if(e.target===recDlg)recDlg.classList.remove('on')});
 
 /* 目次 */
 toc.addEventListener('click',e=>{
@@ -644,7 +728,7 @@ nameDlg.addEventListener('click',e=>{if(e.target===nameDlg)closeName(false)});
 
 /* 確認ダイアログ */
 const cfDlg=$('#cfDlg');let cfCb=null;
-function confirmDel(ttl,msg,okLabel,cb){$('#cfTtl').textContent=ttl;$('#cfMsg').textContent=msg;$('#cfOk').textContent=okLabel;cfCb=cb;cfDlg.classList.add('on')}
+function confirmDel(ttl,msg,okLabel,cb){$('#cfOk').classList.toggle('danger',!/記録/.test(okLabel));$('#cfOk').classList.toggle('p',/記録/.test(okLabel));$('#cfTtl').textContent=ttl;$('#cfMsg').textContent=msg;$('#cfOk').textContent=okLabel;cfCb=cb;cfDlg.classList.add('on')}
 $('#cfOk').onclick=()=>{cfDlg.classList.remove('on');cfCb&&cfCb()};
 $('#cfNo').onclick=()=>cfDlg.classList.remove('on');
 cfDlg.addEventListener('click',e=>{if(e.target===cfDlg)cfDlg.classList.remove('on')});
@@ -657,7 +741,7 @@ const tName=n=>n.title||'無題のノート';
 function noteLi(n,showF){
   const c=(n.html.match(/class="r/g)||[]).length;
   const ctl=org?`<button class="fx del" data-d="${n.id}">削除</button>`:'';
-  return `<li class="nt ${n.id===st.cur?'cur':''}"><button data-o="${n.id}"><b>${esc(tName(n))}</b><small>${showF?`<span class="fdname">${esc(fName(validF(n.folder)))}</span>・`:''}赤 ${c} 箇所${n.updated?'・'+new Date(n.updated).toLocaleDateString('ja-JP'):''}</small></button>${ctl}</li>`;
+  return `<li class="nt ${n.id===st.cur?'cur':''}"><button data-o="${n.id}"><b>${esc(tName(n))}</b>${listSquares(n.id)}<small>${showF?`<span class="fdname">${esc(fName(validF(n.folder)))}</span>・`:''}赤 ${c} 箇所${n.updated?'・'+new Date(n.updated).toLocaleDateString('ja-JP'):''}</small></button>${ctl}</li>`;
 }
 function renderList(){
   $('#bOrg').classList.toggle('on',org);$('#bOrg').textContent=org?'完了':'整理';$('#orgTip').hidden=!org;
@@ -833,24 +917,29 @@ async function findGist(){
   const g=await gh('/gists',{method:'POST',body:JSON.stringify({description:GDESC,public:false,files:{[GFILE]:{content:await pack(payload())}}})});
   return g.id;
 }
-const payload=()=>({app:'riron-mynote',v:1,folders:st.folders,notes:st.notes,deleted:st.deleted,fdeleted:st.fdeleted});
+const payload=()=>({app:'riron-mynote',v:1,folders:st.folders,notes:st.notes,deleted:st.deleted,fdeleted:st.fdeleted,recs:st.recs,recdel:st.recdel});
 /* ノート・フォルダごとに新しい方を残す。完全削除の記録が新しければ消す */
 function mergeData(a,b){
   const maxMap=(x,y)=>{const o={...x};for(const k in y)o[k]=Math.max(o[k]||0,y[k]);return o};
   const deleted=maxMap(a.deleted||{},b.deleted||{}),fdeleted=maxMap(a.fdeleted||{},b.fdeleted||{});
   const pick=(xs,ys,del)=>{const m=new Map();for(const it of[...(xs||[]),...(ys||[])]){if(!it||!it.id)continue;const c=m.get(it.id);if(!c||(it.updated||0)>(c.updated||0))m.set(it.id,it)}
     return[...m.values()].filter(it=>!(del[it.id]>=(it.updated||0)))};
-  return{folders:pick(a.folders,b.folders,fdeleted),notes:pick(a.notes,b.notes,deleted),deleted,fdeleted};
+  /* 暗記の記録は両方を足し合わせ、取り消した記録（recdel）は消す */
+  const recdel=maxMap(a.recdel||{},b.recdel||{}),recs={...(b.recs||{}),...(a.recs||{})};
+  for(const k in recdel)delete recs[k];
+  return{folders:pick(a.folders,b.folders,fdeleted),notes:pick(a.notes,b.notes,deleted),deleted,fdeleted,recs,recdel};
 }
-const sig=d=>JSON.stringify([[...(d.folders||[])].sort((x,y)=>x.id<y.id?-1:1),[...(d.notes||[])].sort((x,y)=>x.id<y.id?-1:1),d.deleted||{},d.fdeleted||{}]);
+const sortObj=o=>Object.keys(o||{}).sort().map(k=>[k,o[k]]);
+const sig=d=>JSON.stringify([[...(d.folders||[])].sort((x,y)=>x.id<y.id?-1:1),[...(d.notes||[])].sort((x,y)=>x.id<y.id?-1:1),sortObj(d.deleted),sortObj(d.fdeleted),sortObj(d.recs),sortObj(d.recdel)]);
 function applyMerged(m){
   const curBefore=cur(),h=curBefore.html,t=curBefore.title;
-  Object.assign(st,{folders:m.folders,notes:m.notes,deleted:m.deleted,fdeleted:m.fdeleted});
+  Object.assign(st,{folders:m.folders,notes:m.notes,deleted:m.deleted,fdeleted:m.fdeleted,recs:m.recs||st.recs,recdel:m.recdel||st.recdel});
   if(!st.notes.some(n=>n.id===st.cur&&!n.trash))st.cur=(live()[0]||cur()).id;
   muteSave=true;save();muteSave=false;
   const n=cur();
   if(n!==curBefore||n.html!==h||n.title!==t){const y=scrollY,mm=memo.checked;load();if(mm){memo.checked=true;memo.dispatchEvent(new Event('change'))}scrollTo(0,y)}
   else{renderFsel();refresh()}
+  renderMarks();
   if(drawer.classList.contains('on'))renderList();
 }
 async function syncNow(){
@@ -868,11 +957,12 @@ async function syncNow(){
     const local=payload(),merged=remote?mergeData(local,remote):local;
     const curBefore=cur(),beforeHtml=curBefore.html,beforeTitle=curBefore.title;
     if(sig(merged)!==sig(local)){
-      Object.assign(st,{folders:merged.folders,notes:merged.notes,deleted:merged.deleted,fdeleted:merged.fdeleted});
+      Object.assign(st,{folders:merged.folders,notes:merged.notes,deleted:merged.deleted,fdeleted:merged.fdeleted,recs:merged.recs||st.recs,recdel:merged.recdel||st.recdel});
       muteSave=true;save();muteSave=false;
       const n=cur();
       if(n!==curBefore||n.html!==beforeHtml||n.title!==beforeTitle){const y=scrollY,m=memo.checked;load();if(m){memo.checked=true;memo.dispatchEvent(new Event('change'))}scrollTo(0,y)}
       else{renderFsel();refresh()}
+      renderMarks();
       if(drawer.classList.contains('on'))renderList();
     }
     if(!remote||sig(merged)!==sig(remote))await gh('/gists/'+sy.gist,{method:'PATCH',body:JSON.stringify({files:{[GFILE]:{content:await pack(payload())}}})});
