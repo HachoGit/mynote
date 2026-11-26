@@ -123,7 +123,7 @@ main{flex:1;width:100%;max-width:960px;margin:0 auto;padding:0 10px 110px}
 .pn ul{list-style:none;margin:0;padding:0;overflow:auto;flex:1}
 .pn li{display:flex;align-items:center;border-bottom:1px solid var(--line)}
 .pn li.cur{background:light-dark(#fff3ec,#2b211b)}
-.pn li>button{flex:1;text-align:left;padding:10px 16px;border-radius:0;display:block}
+.pn li>button{flex:1;text-align:left;padding:7px 16px;border-radius:0;display:block;min-height:44px}
 .pn li b{display:block;font-weight:500;font-size:15px}
 .pn li small{color:var(--sub);font-size:13px}
 .pn .del{flex:none;color:var(--sub);font-size:13px}
@@ -491,10 +491,10 @@ function renderMarks(){
   const rs=recsOf(cur().id),c=rs.length;
   $('#marks').innerHTML=squaresHTML(c)+`<small>${c}回${c?'・最終 '+new Date(rs[c-1].t).toLocaleDateString('ja-JP',{month:'numeric',day:'numeric'}):''}</small>`;
 }
-function listSquares(id){
+function listSquares(id,folder){
   const c=recsOf(id).length;let h='';
   for(let i=0;i<10;i++)h+=`<span class="sq${i<c?' on':''}"></span>`;
-  return `<span class="sqs">${h}<em>${c}回</em></span>`;
+  return `<span class="sqs">${h}<em>${c}回${folder?'・'+esc(folder):''}</em></span>`;
 }
 let atT=null;
 function actionToast(msg,label,fn,ms=5000){
@@ -739,9 +739,8 @@ let org=false;
 const byTitle=(a,b)=>(a.title||'').localeCompare(b.title||'','ja',{numeric:true});
 const tName=n=>n.title||'無題のノート';
 function noteLi(n,showF){
-  const c=(n.html.match(/class="r/g)||[]).length;
   const ctl=org?`<button class="fx del" data-d="${n.id}">削除</button>`:'';
-  return `<li class="nt ${n.id===st.cur?'cur':''}"><button data-o="${n.id}"><b>${esc(tName(n))}</b>${listSquares(n.id)}<small>${showF?`<span class="fdname">${esc(fName(validF(n.folder)))}</span>・`:''}赤 ${c} 箇所${n.updated?'・'+new Date(n.updated).toLocaleDateString('ja-JP'):''}</small></button>${ctl}</li>`;
+  return `<li class="nt ${n.id===st.cur?'cur':''}"><button data-o="${n.id}"><b>${esc(tName(n))}</b>${listSquares(n.id,showF?fName(validF(n.folder)):'')}</button>${ctl}</li>`;
 }
 function renderList(){
   $('#bOrg').classList.toggle('on',org);$('#bOrg').textContent=org?'完了':'整理';$('#orgTip').hidden=!org;
